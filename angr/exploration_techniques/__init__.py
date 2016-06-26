@@ -76,10 +76,6 @@ class ExplorationTechnique(object):
                     return True
 
                 try:
-                    # If the address is not in the set (which could mean it is
-                    # not at the top of a block), check directly in the blocks
-                    # (Blocks are repeatedly created for every check, but with
-                    # the IRSB cache in angr lifter it should be OK.)
                     return addrs.intersection(set(self.project.factory.block(p.addr).instruction_addrs))
                 except AngrError:
                     return False
@@ -104,4 +100,5 @@ from .threading import Threading
 from .dfs import DFS
 from .looplimiter import LoopLimiter
 from .veritesting import Veritesting
+from .instruction import InstructionExplorer
 from ..errors import AngrError, AngrExplorationTechniqueError
