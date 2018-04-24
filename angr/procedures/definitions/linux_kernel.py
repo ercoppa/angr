@@ -5,6 +5,8 @@ lib = SimSyscallLibrary()
 lib.set_library_names('linux')
 lib.add_all_from_dict(P['linux_kernel'])
 lib.add_alias('exit', 'exit_group')
+lib.add_alias('getuid', 'geteuid')
+lib.add_alias('getgid', 'getegid')
 
 # python parse_syscalls_from_gdb.py >> linux_kernel.py
 
@@ -1415,7 +1417,7 @@ lib.add_number_mapping_from_dict("i386", {
     87: "swapon",
     88: "reboot",
     89: "readdir",
-    90: "mmap",
+    90: "old_mmap",
     91: "munmap",
     92: "truncate",
     93: "ftruncate",

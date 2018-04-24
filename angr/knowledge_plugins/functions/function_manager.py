@@ -1,7 +1,6 @@
 import logging
 import collections
-
-import bintrees
+from sortedcontainers import SortedDict
 import networkx
 
 from ...errors import SimEngineError
@@ -12,39 +11,37 @@ from .function import Function
 l = logging.getLogger("angr.knowledge.function_manager")
 
 
-class FunctionDict(dict):
+class FunctionDict(SortedDict):
     """
     FunctionDict is a dict where the keys are function starting addresses and
     map to the associated :class:`Function`.
     """
     def __init__(self, backref, *args, **kwargs):
         self._backref = backref
-        self._avltree = bintrees.AVLTree()
         super(FunctionDict, self).__init__(*args, **kwargs)
 
-    def __missing__(self, key):
-        if isinstance(key, (int, long)):
-            addr = key
-        else:
-            raise ValueError("FunctionDict.__missing__ only supports int as key type")
+    def __getitem__(self, addr):
+        try:
+            return super(FunctionDict, self).__getitem__(addr)
+        except KeyError:
+            if not isinstance(addr, (int, long)):
+                raise TypeError("FunctionDict only supports int as key type")
 
-        t = Function(self._backref, addr)
-        self[addr] = t
-        return t
-
-    def __setitem__(self, addr, func):
-        self._avltree[addr] = func
-        super(FunctionDict, self).__setitem__(addr, func)
-
-    def __delitem__(self, addr):
-        del self._avltree[addr]
-        super(FunctionDict, self).__delitem__(addr)
+            t = Function(self._backref, addr)
+            self[addr] = t
+            return t
 
     def floor_addr(self, addr):
-        return self._avltree.floor_key(addr)
+        try:
+            return next(self.irange(maximum=addr, reverse=True))
+        except StopIteration:
+            raise KeyError(addr)
 
     def ceiling_addr(self, addr):
-        return self._avltree.ceiling_key(addr)
+        try:
+            return next(self.irange(minimum=addr, reverse=False))
+        except StopIteration:
+            raise KeyError(addr)
 
 
 class FunctionManager(KnowledgeBasePlugin, collections.Mapping):
@@ -200,10 +197,22 @@ class FunctionManager(KnowledgeBasePlugin, collections.Mapping):
     # Dict methods
     #
 
+    def __contains__(self, item):
+
+        if type(item) in (int, long):
+            # this is an address
+            return item in self._function_map
+
+        try:
+            _ = self[item]
+            return True
+        except KeyError:
+            return False
+
     def __getitem__(self, k):
-        if isinstance(k, (int, long)):
+        if type(k) in (int, long):
             f = self.function(addr=k)
-        elif isinstance(k, str):
+        elif type(k) is str:
             f = self.function(name=k)
         else:
             raise ValueError("FunctionManager.__getitem__ deos not support keys of type %s" % type(k))

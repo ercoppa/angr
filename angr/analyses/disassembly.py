@@ -2,7 +2,7 @@
 import logging
 from collections import defaultdict
 
-from . import Analysis, register_analysis
+from . import Analysis
 
 from .disassembly_utils import decode_instruction
 from ..block import CapstoneInsn
@@ -102,8 +102,12 @@ class Hook(DisassemblyPiece):
     def __init__(self, addr, parentblock):
         self.addr = addr
         self.parentblock = parentblock
-        self.name = str(parentblock.parentfunc.sim_procedure).split()[-1].strip("'<>")
-        self.short_name = str(parentblock.parentfunc.sim_procedure).strip("'<>").split('.')[-1]
+        if parentblock and parentblock.parentfunc:
+            simproc_name = str(parentblock.parentfunc.sim_procedure)
+        else:
+            simproc_name = "Unknown"
+        self.name = simproc_name.split()[-1].strip("'<>")
+        self.short_name = simproc_name.strip("'<>").split('.')[-1]
 
     def _render(self, formatting):
         return ['SimProcedure ' + self.short_name]
@@ -631,4 +635,5 @@ class Disassembly(Analysis):
         return '\n'.join(sum((x.render(formatting) for x in self.raw_result), []))
 
 
-register_analysis(Disassembly, 'Disassembly')
+from angr.analyses import AnalysesHub
+AnalysesHub.register_default('Disassembly', Disassembly)

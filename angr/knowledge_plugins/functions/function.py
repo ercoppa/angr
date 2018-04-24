@@ -16,7 +16,7 @@ class Function(object):
     """
     A representation of a function and various information about it.
     """
-    def __init__(self, function_manager, addr, name=None, syscall=False):
+    def __init__(self, function_manager, addr, name=None, syscall=None):
         """
         Function constructor
 
@@ -49,6 +49,10 @@ class Function(object):
 
         self.is_plt = False
         self.is_simprocedure = False
+
+        if self.is_syscall is None:
+            # Determine whether this function is a syscall or not
+            self.is_syscall = self._project.simos.is_syscall_addr(addr)
 
         if project.is_hooked(addr):
             self.is_simprocedure = True
@@ -109,6 +113,15 @@ class Function(object):
 
         # Whether this function returns or not. `None` means it's not determined yet
         self._returning = None
+
+        # Determine returning status for SimProcedures and Syscalls
+        hooker = None
+        if self.is_simprocedure:
+            hooker = project.hooked_by(addr)
+        elif self.is_syscall:
+            hooker = project.simos.syscall_from_addr(addr)
+        if hooker and hasattr(hooker, 'NO_RET'):
+            self.returning = not hooker.NO_RET
 
         self.prepared_registers = set()
         self.prepared_stack_variables = set()

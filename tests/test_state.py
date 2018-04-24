@@ -2,6 +2,7 @@ import logging
 import pickle
 import nose
 import gc
+import tempfile
 import os
 
 import ana
@@ -105,16 +106,11 @@ def test_state_merge():
     nose.tools.assert_true(c.has_plugin('libc'))
     nose.tools.assert_true(d.has_plugin('libc'))
 
-    # test merging posix with different open files
+    # test merging posix with different open files (illegal!)
     a = SimState(arch='AMD64', mode='symbolic')
     b = a.copy()
-    a.posix.get_file(3)
-    nose.tools.assert_equal(len(a.posix.files), 4)
-    nose.tools.assert_equal(len(b.posix.files), 3)
-    c = a.copy().merge(b.copy())[0]
-    d = b.copy().merge(a.copy())[0]
-    nose.tools.assert_equal(len(c.posix.files), 4)
-    nose.tools.assert_equal(len(d.posix.files), 4)
+    a.posix.open('/tmp/idk', 1)
+    nose.tools.assert_raises(angr.errors.SimMergeError, lambda: a.copy().merge(b.copy()))
 
 def test_state_merge_static():
     # With abstract memory
@@ -209,7 +205,8 @@ def test_state_merge_optimal():
 
 
 def setup():
-    ana.set_dl(ana.DirDataLayer('/tmp/picklez'))
+    tmp_dir = tempfile.mkdtemp(prefix='test_state_picklez')
+    ana.set_dl(ana.DirDataLayer(tmp_dir))
 def teardown():
     ana.set_dl(ana.SimpleDataLayer())
 

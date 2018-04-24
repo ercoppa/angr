@@ -688,27 +688,6 @@ class CFGBase(Analysis):
                 return True
         return False
 
-    def _addr_belongs_to_section(self, addr):
-        """
-        Return the section object that the address belongs to.
-
-        :param int addr: The address to test
-        :return: The section that the address belongs to, or None if the address does not belong to any section, or if
-                section information is not available.
-        :rtype: cle.Section
-        """
-
-        obj = self.project.loader.find_object_containing(addr)
-
-        if obj is None:
-            return None
-
-        if isinstance(obj, (ExternObject, KernelObject, TLSObject)):
-            # the address is from a special CLE section
-            return None
-
-        return obj.find_section_containing(addr)
-
     def _addrs_belong_to_same_section(self, addr_a, addr_b):
         """
         Test if two addresses belong to the same section.
@@ -739,54 +718,6 @@ class CFGBase(Analysis):
 
         return src_section.contains_addr(addr_b)
 
-    def _addr_next_section(self, addr):
-        """
-        Return the next section object after the given address.
-
-        :param int addr: The address to test
-        :return: The next section that goes after the given address, or None if there is no section after the address,
-                 or if section information is not available.
-        :rtype: cle.Section
-        """
-
-        obj = self.project.loader.find_object_containing(addr)
-
-        if obj is None:
-            return None
-
-        if isinstance(obj, (ExternObject, KernelObject, TLSObject)):
-            # the address is from a special CLE section
-            return None
-
-        for section in obj.sections:
-            start = section.vaddr
-
-            if addr < start:
-                return section
-
-        return None
-
-    def _addr_belongs_to_segment(self, addr):
-        """
-        Return the section object that the address belongs to.
-
-        :param int addr: The address to test
-        :return: The section that the address belongs to, or None if the address does not belong to any section, or if
-                section information is not available.
-        :rtype: cle.Segment
-        """
-
-        obj = self.project.loader.find_object_containing(addr)
-
-        if obj is None:
-            return None
-
-        if isinstance(obj, (ExternObject, KernelObject, TLSObject)):
-            # the address is from a section allocated by angr.
-            return None
-
-        return obj.find_segment_containing(addr)
-
     def _addr_hooked_or_syscall(self, addr):
         """
         Check whether the address belongs to a hook or a syscall.
@@ -814,7 +745,7 @@ class CFGBase(Analysis):
             return buff, size
 
         except KeyError:
-            return None
+            return None, None
 
     def _fast_memory_load_byte(self, addr):
         """
@@ -942,10 +873,15 @@ class CFGBase(Analysis):
             if func.has_return:
                 changes['functions_return'].append(func)
                 func.returning = True
+                self._add_returning_function(func.addr)
                 continue
 
             # This function does not have endpoints. It's either because it does not return, or we haven't analyzed all
             # blocks of it.
+
+            if not func.block_addrs_set:
+                # the function is empty. skip
+                continue
 
             # Let's first see if it's a known SimProcedure that does not return
             if self.project.is_hooked(func.addr):
@@ -962,6 +898,7 @@ class CFGBase(Analysis):
                     changes['functions_do_not_return'].append(func)
                 else:
                     func.returning = True
+                    self._add_returning_function(func.addr)
                     changes['functions_return'].append(func)
                 continue
 
@@ -975,6 +912,7 @@ class CFGBase(Analysis):
                 # the error will be corrected during post-processing. In fact at this moment we cannot say anything
                 # about whether this function returns or not. We always assume it returns.
                 func.returning = True
+                self._add_returning_function(func.addr)
                 changes['functions_return'].append(func)
                 continue
 
@@ -1022,6 +960,7 @@ class CFGBase(Analysis):
                 target_func = self.kb.functions[goout_target.addr]
                 if target_func.returning is True:
                     func.returning = True
+                    self._add_returning_function(func.addr)
                     changes['functions_return'].append(func)
                     bail_out = True
                 elif target_func.returning is None:
@@ -1315,12 +1254,19 @@ class CFGBase(Analysis):
     # Function identification and such
     #
 
+    def _add_returning_function(self, func_addr):
+        pass
+
     def remove_function_alignments(self):
         """
         Remove all function alignments.
 
         :return: None
         """
+
+        # This function requires Capstone engine support
+        if not self.project.arch.capstone_support:
+            return
 
         for func_addr in self.kb.functions.keys():
             function = self.kb.functions[func_addr]
@@ -1536,7 +1482,7 @@ class CFGBase(Analysis):
             # sanity check: startpoint of the function should be greater than its endpoint
             if startpoint_addr >= endpoint_addr:
                 continue
-            if max_unresolved_jump_addr >= endpoint_addr:
+            if max_unresolved_jump_addr <= startpoint_addr or max_unresolved_jump_addr >= endpoint_addr:
                 continue
 
             # scan forward from the endpoint to include any function tail jumps
@@ -1605,7 +1551,6 @@ class CFGBase(Analysis):
 
             for f_addr in functions_to_merge:
                 functions_to_remove[f_addr] = func_addr
-                continue
 
         # merge all functions
         for to_remove, merge_with in functions_to_remove.iteritems():
